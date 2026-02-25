@@ -1,0 +1,9 @@
+services:
+  kpservice-bot:
+    build: .
+    container_name: kpservice-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./artifacts:/app/artifacts

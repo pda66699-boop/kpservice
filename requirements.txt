@@ -1,0 +1,5 @@
+aiogram
+docxtpl
+python-dotenv
+pypdf
+openpyxl
