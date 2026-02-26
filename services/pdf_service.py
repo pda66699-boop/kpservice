@@ -126,7 +126,8 @@ def convert_excel_to_pdf(input_path: str | Path, output_path: str | Path, timeou
         raise ValueError(f"Expected Excel file (.xlsx/.xls/.xlsm), got: {source.suffix}")
 
     # Keep A4 and fit table inside printable area.
-    calc_filter = 'pdf:calc_pdf_Export:{"SinglePageSheets":{"type":"boolean","value":"true"}}'
+    # Do not use SinglePageSheets: it can produce non-A4 oversized pages.
+    calc_filter = "pdf:calc_pdf_Export"
     if source.suffix.lower() == ".xls":
         return _convert_to_pdf(source, output_path, timeout=timeout, convert_filter=calc_filter)
 
