@@ -6,6 +6,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.parse import quote
 
+from openpyxl import load_workbook
+from openpyxl.worksheet.page import PageMargins
+
 
 class PdfConversionError(RuntimeError):
     """Raised when LibreOffice conversion fails."""
@@ -25,6 +28,25 @@ def _resolve_soffice_binary() -> str:
 
 def _file_uri(path: Path) -> str:
     return f"file://{quote(str(path.resolve()))}"
+
+
+def _prepare_excel_for_a4(input_path: Path, temp_dir: Path) -> Path:
+    prepared = temp_dir / f"{input_path.stem}_a4{input_path.suffix.lower()}"
+
+    workbook = load_workbook(filename=str(input_path), data_only=False, keep_vba=input_path.suffix.lower() == ".xlsm")
+    for sheet in workbook.worksheets:
+        sheet.page_setup.paperSize = sheet.PAPERSIZE_A4
+        sheet.page_setup.orientation = sheet.ORIENTATION_PORTRAIT
+        sheet.page_setup.fitToWidth = 1
+        sheet.page_setup.fitToHeight = 1
+        sheet.page_setup.scale = None
+        sheet.sheet_properties.pageSetUpPr.fitToPage = True
+        sheet.page_margins = PageMargins(left=0.5, right=0.5, top=0.5, bottom=0.5, header=0.3, footer=0.3)
+        sheet.print_options.horizontalCentered = True
+        sheet.print_options.verticalCentered = False
+
+    workbook.save(str(prepared))
+    return prepared
 
 
 def _convert_to_pdf(
@@ -102,9 +124,15 @@ def convert_excel_to_pdf(input_path: str | Path, output_path: str | Path, timeou
     source = Path(input_path)
     if source.suffix.lower() not in {".xlsx", ".xls", ".xlsm"}:
         raise ValueError(f"Expected Excel file (.xlsx/.xls/.xlsm), got: {source.suffix}")
-    # Force export of each sheet as a single PDF page to avoid table splitting.
+
+    # Keep A4 and fit table inside printable area.
     calc_filter = 'pdf:calc_pdf_Export:{"SinglePageSheets":{"type":"boolean","value":"true"}}'
-    return _convert_to_pdf(source, output_path, timeout=timeout, convert_filter=calc_filter)
+    if source.suffix.lower() == ".xls":
+        return _convert_to_pdf(source, output_path, timeout=timeout, convert_filter=calc_filter)
+
+    with TemporaryDirectory(prefix="excel_a4_") as temp_dir:
+        prepared_excel = _prepare_excel_for_a4(source, Path(temp_dir))
+        return _convert_to_pdf(prepared_excel, output_path, timeout=timeout, convert_filter=calc_filter)
 
 
 def convert_rtf_to_pdf(input_path: str | Path, output_path: str | Path, timeout: int = 120) -> Path:
