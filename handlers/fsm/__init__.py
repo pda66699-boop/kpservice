@@ -134,9 +134,10 @@ def _safe_output_filename(name: str, fallback: str) -> str:
 
 
 def _build_kp_filename(kp_number: str, client_name: str) -> str:
-    kp_number_value = kp_number or "без номера"
-    client_name_value = client_name or "клиента"
-    base = f"КП № {kp_number_value} для {client_name_value}"
+    kp_number_value = re.sub(r"\s+", " ", (kp_number or "без номера")).strip()
+    client_name_value = re.sub(r"\s+", " ", (client_name or "клиента")).strip()
+    numero = "\u2116"
+    base = f"КП {numero} {kp_number_value} для {client_name_value}"
     return f"{_safe_output_filename(base, 'КП для клиента')}.pdf"
 
 

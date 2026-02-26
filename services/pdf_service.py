@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 from shutil import which
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from urllib.parse import quote
 
 
 class PdfConversionError(RuntimeError):
@@ -21,7 +23,16 @@ def _resolve_soffice_binary() -> str:
     raise PdfConversionError("LibreOffice (soffice) is not installed or not in PATH")
 
 
-def _convert_to_pdf(input_path: str | Path, output_path: str | Path, timeout: int = 120) -> Path:
+def _file_uri(path: Path) -> str:
+    return f"file://{quote(str(path.resolve()))}"
+
+
+def _convert_to_pdf(
+    input_path: str | Path,
+    output_path: str | Path,
+    timeout: int = 120,
+    convert_filter: str | None = None,
+) -> Path:
     source = Path(input_path)
     target = Path(output_path)
 
@@ -32,31 +43,34 @@ def _convert_to_pdf(input_path: str | Path, output_path: str | Path, timeout: in
 
     soffice_bin = _resolve_soffice_binary()
 
-    command = [
-        soffice_bin,
-        "--headless",
-        "--nologo",
-        "--nodefault",
-        "--norestore",
-        "--convert-to",
-        "pdf",
-        "--outdir",
-        str(target.parent),
-        str(source),
-    ]
+    with TemporaryDirectory(prefix="lo_profile_") as profile_dir:
+        convert_to = convert_filter or "pdf"
+        command = [
+            soffice_bin,
+            f"-env:UserInstallation={_file_uri(Path(profile_dir))}",
+            "--headless",
+            "--nologo",
+            "--nodefault",
+            "--norestore",
+            "--convert-to",
+            convert_to,
+            "--outdir",
+            str(target.parent),
+            str(source),
+        ]
 
-    try:
-        result = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-    except FileNotFoundError as exc:
-        raise PdfConversionError("LibreOffice binary not found") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise PdfConversionError(f"Conversion timed out for file: {source}") from exc
+        try:
+            result = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except FileNotFoundError as exc:
+            raise PdfConversionError("LibreOffice binary not found") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise PdfConversionError(f"Conversion timed out for file: {source}") from exc
 
     converted_default = target.parent / f"{source.stem}.pdf"
 
@@ -88,7 +102,9 @@ def convert_excel_to_pdf(input_path: str | Path, output_path: str | Path, timeou
     source = Path(input_path)
     if source.suffix.lower() not in {".xlsx", ".xls", ".xlsm"}:
         raise ValueError(f"Expected Excel file (.xlsx/.xls/.xlsm), got: {source.suffix}")
-    return _convert_to_pdf(source, output_path, timeout=timeout)
+    # Force export of each sheet as a single PDF page to avoid table splitting.
+    calc_filter = 'pdf:calc_pdf_Export:{"SinglePageSheets":{"type":"boolean","value":"true"}}'
+    return _convert_to_pdf(source, output_path, timeout=timeout, convert_filter=calc_filter)
 
 
 def convert_rtf_to_pdf(input_path: str | Path, output_path: str | Path, timeout: int = 120) -> Path:

@@ -50,7 +50,7 @@ async def start_command(message: Message, state: FSMContext) -> None:
         resize_keyboard=True,
     )
     await message.answer(
-        "👋 Привет! Я помогу тебе собрать КП для клиента всего в 6 шагов.\n"
+        "👋 Привет! Я помогу тебе собрать КП для клиента всего в 5 шагов.\n"
         "🧭 Твоя задача — просто пошагово предоставить мне нужную информацию.",
         reply_markup=keyboard,
     )
