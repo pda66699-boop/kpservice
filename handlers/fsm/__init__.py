@@ -15,10 +15,16 @@ from aiogram.types import FSInputFile, KeyboardButton, Message, ReplyKeyboardMar
 from pypdf import PdfReader, PdfWriter
 
 from services.kp_builder import build_kp_pdf as build_kp
+from services.manager_profile_store import (
+    get_manager_profile,
+    has_manager_profile as has_manager_profile_db,
+    init_manager_profiles_db,
+    save_manager_profile,
+)
 
 router = Router(name="fsm_root")
 
-MANAGER_PROFILES: dict[int, dict[str, str]] = {}
+init_manager_profiles_db()
 
 
 class KpBuildStates(StatesGroup):
@@ -47,7 +53,7 @@ class ProposalReviewStates(StatesGroup):
 
 
 def has_manager_profile(user_id: int | None) -> bool:
-    return bool(user_id and user_id in MANAGER_PROFILES)
+    return bool(user_id and has_manager_profile_db(user_id))
 
 
 def get_generation_keyboard() -> ReplyKeyboardMarkup:
@@ -182,12 +188,12 @@ async def _rebuild_kp_from_state(message: Message, state: FSMContext) -> Path:
     client_name = str(fsm_data.get("client_name", "")).strip()
     kp_filename = _normalize_pdf_filename(_build_kp_filename(kp_number, client_name))
     manager_phone = (
-        MANAGER_PROFILES.get(user_id, {}).get("manager_phone")
+        (get_manager_profile(user_id) or {}).get("manager_phone")
         if user_id is not None
         else None
     )
     manager_name = (
-        MANAGER_PROFILES.get(user_id, {}).get("manager_name")
+        (get_manager_profile(user_id) or {}).get("manager_name")
         if user_id is not None
         else None
     )
@@ -287,7 +293,7 @@ async def restart_kp_build(message: Message, state: FSMContext) -> None:
 @router.message(F.text.casefold() == "данные менеджера")
 async def edit_manager_profile(message: Message, state: FSMContext) -> None:
     user_id = message.from_user.id if message.from_user else None
-    profile = MANAGER_PROFILES.get(user_id) if user_id is not None else None
+    profile = get_manager_profile(user_id) if user_id is not None else None
     if not profile:
         await state.clear()
         await state.set_state(ManagerProfileStates.full_name)
@@ -349,9 +355,8 @@ async def receive_manager_name(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     edit_mode = data.get("edit_mode")
     if edit_mode == "name_only":
-        profile = MANAGER_PROFILES.get(user_id, {})
-        profile["manager_name"] = manager_name
-        MANAGER_PROFILES[user_id] = profile
+        profile = get_manager_profile(user_id) or {}
+        save_manager_profile(user_id=user_id, manager_name=manager_name, manager_phone=profile.get("manager_phone"))
         await state.clear()
         await message.answer(
             f"✅ ФИО обновлено: {manager_name}",
@@ -381,11 +386,8 @@ async def receive_manager_phone_profile(message: Message, state: FSMContext) -> 
     edit_mode = data.get("edit_mode")
     manager_name = str(data.get("manager_name", "")).strip()
     if not manager_name:
-        manager_name = MANAGER_PROFILES.get(user_id, {}).get("manager_name", "")
-    MANAGER_PROFILES[user_id] = {
-        "manager_name": manager_name,
-        "manager_phone": formatted,
-    }
+        manager_name = (get_manager_profile(user_id) or {}).get("manager_name", "")
+    save_manager_profile(user_id=user_id, manager_name=manager_name, manager_phone=formatted)
     await state.clear()
 
     if edit_mode == "phone_only":

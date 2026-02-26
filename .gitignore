@@ -1,0 +1,3 @@
+artifacts/manager_profiles.sqlite3
+__pycache__/
+*.pyc
